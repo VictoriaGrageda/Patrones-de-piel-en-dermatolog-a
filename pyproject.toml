@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skin-patterns-dermatology"
+version = "0.1.0"
+description = "Analisis no supervisado de patrones de piel en dermatologia."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "Pillow>=10.3",
+  "scikit-image>=0.23",
+  "scikit-learn>=1.5",
+  "matplotlib>=3.8",
+  "joblib>=1.4",
+  "streamlit>=1.36",
+]
+
+[project.scripts]
+skin-patterns = "skin_patterns.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
