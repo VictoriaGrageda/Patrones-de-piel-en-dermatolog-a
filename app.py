@@ -17,7 +17,7 @@ st.caption("Analisis no supervisado con vision por computadora para agrupar lesi
 
 with st.sidebar:
     st.header("Configuracion")
-    method = st.selectbox("Metodo", ["kmeans", "fuzzy", "gmm", "dbscan"])
+    method = st.selectbox("Metodo", ["kmeans", "dbscan"])
     clusters = st.slider("Clusters", min_value=2, max_value=8, value=4)
     image_size = st.select_slider("Tamano de imagen", options=[128, 160, 224, 256], value=224)
     pca_components = st.slider("Componentes PCA", min_value=2, max_value=24, value=12)
