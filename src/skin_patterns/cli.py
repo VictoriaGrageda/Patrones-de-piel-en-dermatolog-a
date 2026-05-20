@@ -13,7 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--method",
         default="kmeans",
-        choices=["kmeans", "gmm", "dbscan", "fuzzy"],
+        choices=["kmeans", "dbscan"],
         help="Algoritmo de clustering.",
     )
     parser.add_argument("--clusters", type=int, default=4, help="Numero de clusters para K-Means, GMM o Fuzzy.")
