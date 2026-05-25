@@ -1,9 +1,9 @@
 # Patrones de piel en dermatologia
 
-Proyecto de Inteligencia Artificial 1 orientado al analisis de imagenes dermatologicas mediante vision por computadora y aprendizaje no supervisado. El sistema agrupa lesiones o patrones de piel por similitud visual usando caracteristicas de color, textura y forma.
+Proyecto de Inteligencia Artificial 1 orientado al analisis de imagenes dermatologicas mediante vision por computadora. El repositorio conserva un flujo exploratorio no supervisado y agrega entrenamiento supervisado con HAM10000 usando una CNN propia entrenada desde cero.
 
 > Este proyecto es academico. No reemplaza el diagnostico de un dermatologo ni debe usarse como herramienta medica final.
-> El modelo se entrena desde cero con las imagenes colocadas en `data/raw/`. No se usan modelos preentrenados ni pesos externos.
+> El modelo HAM10000 se entrena desde cero con las imagenes locales del dataset. No se usan modelos preentrenados, backbones externos ni pesos descargados.
 
 ## Objetivo
 
@@ -14,15 +14,42 @@ Construir un prototipo capaz de:
 - Segmentar una region de interes aproximada.
 - Extraer caracteristicas visuales interpretables.
 - Entrenar el modelo de agrupamiento con la informacion propia del dataset.
+- Entrenar una CNN propia para clasificar las 7 clases de HAM10000 desde inicializacion aleatoria.
 - Reducir dimensionalidad con PCA.
 - Agrupar patrones con K-Means, GMM, DBSCAN o Fuzzy C-Means.
 - Evaluar la calidad de agrupamiento con metricas no supervisadas.
+- Evaluar clasificacion supervisada con accuracy, macro F1, matriz de confusion y reporte por clase.
 - Visualizar clusters y resultados.
 
 ## Area y subarea
 
-- **Area:** Aprendizaje no supervisado.
+- **Area:** Vision por computadora y aprendizaje automatico.
 - **Subarea:** Vision por computadora aplicada a dermatologia.
+
+## Dataset HAM10000
+
+El entrenamiento supervisado usa HAM10000, un dataset publico de imagenes dermatoscopicas con siete diagnosticos en la columna `dx`:
+
+- `akiec`: queratosis actinica / enfermedad de Bowen.
+- `bcc`: carcinoma basocelular.
+- `bkl`: lesiones benignas tipo queratosis.
+- `df`: dermatofibroma.
+- `mel`: melanoma.
+- `nv`: nevus melanociticos.
+- `vasc`: lesiones vasculares.
+
+Estructura esperada:
+
+```text
+data/raw/HAM10000/
+|-- HAM10000_metadata.csv
+|-- HAM10000_images_part_1/
+|   `-- ISIC_0024306.jpg
+`-- HAM10000_images_part_2/
+    `-- ISIC_0034320.jpg
+```
+
+El script busca las imagenes de forma recursiva y las une con la metadata usando `image_id`.
 
 ## Metodologia del sistema
 
@@ -39,12 +66,23 @@ Construir un prototipo capaz de:
 8. **Evaluacion:** Silhouette Score, Davies-Bouldin Index y Calinski-Harabasz Index.
 9. **Interpretacion:** tabla de imagenes agrupadas y mapa PCA en 2D.
 
+Para HAM10000 se usa otro flujo:
+
+1. Lectura de `HAM10000_metadata.csv`.
+2. Division estratificada en entrenamiento, validacion y prueba.
+3. Aumento simple de datos en entrenamiento: volteos, rotacion leve, brillo y contraste.
+4. CNN local `SmallDermCnn`, definida en el proyecto.
+5. Inicializacion aleatoria de pesos.
+6. Entrenamiento con `CrossEntropyLoss` ponderada por desbalance de clases.
+7. Evaluacion con accuracy, macro F1, matriz de confusion y reporte por clase.
+
 ## Estructura
 
 ```text
 .
 |-- app.py                         # Interfaz web con Streamlit
 |-- train.py                       # Entrenamiento desde consola
+|-- train_ham10000.py              # CNN propia entrenada desde cero con HAM10000
 |-- data/
 |   |-- raw/                       # Imagenes dermatologicas de entrada
 |   `-- processed/                 # Espacio para datos procesados
@@ -58,6 +96,7 @@ Construir un prototipo capaz de:
 |       |-- clustering.py          # Algoritmos y metricas
 |       |-- config.py              # Configuracion general
 |       |-- features.py            # Caracteristicas de imagen
+|       |-- ham10000.py            # Dataset, CNN y entrenamiento supervisado
 |       |-- pipeline.py            # Flujo principal
 |       `-- preprocessing.py       # Carga, contraste y segmentacion
 |-- pyproject.toml
@@ -87,6 +126,31 @@ pip install -e .
 ```
 
 ## Uso por consola
+
+### Entrenamiento supervisado con HAM10000
+
+Coloca HAM10000 en `data/raw/HAM10000/` y ejecuta:
+
+```bash
+python train_ham10000.py --data-dir data/raw/HAM10000 --metadata data/raw/HAM10000/HAM10000_metadata.csv --epochs 20 --batch-size 32
+```
+
+Si tienes GPU con CUDA:
+
+```bash
+python train_ham10000.py --device cuda --epochs 30 --batch-size 64
+```
+
+Al finalizar se generan:
+
+- `models/ham10000_cnn_from_scratch.pt`
+- `reports/ham10000_training_history.csv`
+- `reports/ham10000_confusion_matrix.csv`
+- `reports/ham10000_test_report.json`
+
+La CNN usada es `SmallDermCnn`. No llama a `torchvision.models`, no carga backbones y no descarga pesos.
+
+### Agrupamiento no supervisado
 
 Coloca las imagenes en `data/raw/` y ejecuta:
 
@@ -143,10 +207,12 @@ Estas metricas no prueban diagnostico clinico; solo miden coherencia estadistica
 
 ## Dataset del proyecto
 
-Para cumplir con el requisito de entrenar con informacion propia, se debe trabajar con las imagenes recolectadas por el grupo o autorizadas para el proyecto. La carpeta final de entrenamiento debe ser:
+Para la parte supervisada del proyecto se debe usar HAM10000 en `data/raw/HAM10000/`. Para la parte exploratoria no supervisada se puede trabajar con imagenes del grupo o una subcarpeta de HAM10000.
+
+Si se quiere ejecutar clustering con HAM10000 sin etiquetas, se puede apuntar a la carpeta raiz:
 
 ```text
-data/raw/
+data/raw/HAM10000/
 ```
 
 Recomendacion para organizar la informacion:
@@ -156,15 +222,15 @@ Recomendacion para organizar la informacion:
 - Mantener un criterio similar de captura para reducir ruido.
 - Registrar en una hoja externa el origen de las imagenes y observaciones relevantes.
 
-Los datasets publicos pueden mencionarse como referencia teorica, pero el entrenamiento entregable debe ejecutarse con la informacion definida por el grupo.
+El entregable supervisado debe aclarar que HAM10000 es un dataset publico usado localmente y que el entrenamiento se hizo desde cero, sin modelos preentrenados.
 
 ## Alcance actual
 
-El proyecto implementa un prototipo funcional de analisis no supervisado. La clasificacion clinica supervisada no forma parte del alcance principal porque requiere etiquetas verificadas por especialistas, validacion medica y control de sesgos.
+El proyecto implementa un prototipo funcional de analisis no supervisado y una CNN supervisada para HAM10000. No debe presentarse como diagnostico clinico; sus resultados son academicos y dependen de la particion, el balance de clases y las epocas entrenadas.
 
 ## Trabajo futuro
 
-- Entrenar una CNN propia desde cero si se cuenta con suficientes imagenes etiquetadas.
+- Probar arquitecturas CNN propias mas profundas si se cuenta con GPU.
 - Agregar UMAP o t-SNE para visualizaciones alternativas.
 - Comparar resultados con etiquetas clinicas si el dataset las incluye.
 - Guardar reportes graficos en PDF.

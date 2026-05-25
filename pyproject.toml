@@ -16,10 +16,12 @@ dependencies = [
   "matplotlib>=3.8",
   "joblib>=1.4",
   "streamlit>=1.36",
+  "torch>=2.2",
 ]
 
 [project.scripts]
 skin-patterns = "skin_patterns.cli:main"
+train-ham10000 = "skin_patterns.ham10000:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
