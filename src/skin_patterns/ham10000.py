@@ -36,6 +36,7 @@ class TrainingConfig:
     image_size: int = 128
     batch_size: int = 32
     epochs: int = 20
+    max_samples: int | None = None
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     val_size: float = 0.15
@@ -187,6 +188,23 @@ def split_frame(frame: pd.DataFrame, config: TrainingConfig) -> tuple[pd.DataFra
     return train_frame, val_frame, test_frame
 
 
+def limit_frame(frame: pd.DataFrame, max_samples: int | None, seed: int) -> pd.DataFrame:
+    if max_samples is None or max_samples >= len(frame):
+        return frame
+
+    labels = frame["dx"].nunique()
+    if max_samples < labels * 10:
+        raise ValueError(f"--max-samples debe ser al menos {labels * 10} para conservar ejemplos por clase.")
+
+    limited_frame, _ = train_test_split(
+        frame,
+        train_size=max_samples,
+        stratify=frame["dx"],
+        random_state=seed,
+    )
+    return limited_frame.reset_index(drop=True)
+
+
 def build_loaders(
     train_frame: pd.DataFrame,
     val_frame: pd.DataFrame,
@@ -287,6 +305,7 @@ def train_ham10000(config: TrainingConfig) -> dict[str, object]:
     seed_everything(config.seed)
     device = resolve_device(config.device)
     frame = load_ham10000_frame(config.data_dir, config.metadata)
+    frame = limit_frame(frame, config.max_samples, config.seed)
     labels = sorted(frame["dx"].unique())
     label_to_index = {label: index for index, label in enumerate(labels)}
     index_to_label = {index: label for label, index in label_to_index.items()}
@@ -378,6 +397,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=128, help="Tamano cuadrado de entrada.")
     parser.add_argument("--batch-size", type=int, default=32, help="Tamano de lote.")
     parser.add_argument("--epochs", type=int, default=20, help="Cantidad de epocas.")
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Limita el entrenamiento a una muestra estratificada de imagenes reales HAM10000.",
+    )
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Tasa de aprendizaje.")
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="Regularizacion AdamW.")
     parser.add_argument("--num-workers", type=int, default=0, help="Procesos para cargar imagenes.")
@@ -394,6 +419,7 @@ def main() -> None:
         image_size=args.image_size,
         batch_size=args.batch_size,
         epochs=args.epochs,
+        max_samples=args.max_samples,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
         num_workers=args.num_workers,
