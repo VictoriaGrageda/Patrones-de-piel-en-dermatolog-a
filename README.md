@@ -103,33 +103,124 @@ Para HAM10000 se usa otro flujo:
 `-- requirements.txt
 ```
 
-## Instalacion
+## Como ejecutar el proyecto desde cero
 
-Requisitos:
+Sigue estos pasos desde una terminal ubicada en la carpeta donde quieres tener el proyecto.
+
+### 1. Obtener el proyecto
+
+Si todavia no tienes el repositorio clonado:
+
+```bash
+git clone <URL_DEL_REPOSITORIO>
+cd Patrones-de-piel-en-dermatolog-a
+```
+
+Si ya tienes la carpeta del proyecto, solo entra a ella:
+
+```bash
+cd Patrones-de-piel-en-dermatolog-a
+```
+
+### 2. Verificar requisitos
+
+Necesitas:
 
 - Python 3.10 o superior.
 - pip.
-- Imagenes dermatologicas para prueba.
+- Git, solo si vas a clonar el repositorio.
+- Imagenes dermatologicas para probar el clustering o el dataset HAM10000 para el entrenamiento supervisado.
 
-Crear entorno virtual e instalar dependencias:
+Puedes verificar Python con:
+
+```bash
+python --version
+pip --version
+```
+
+### 3. Crear y activar el entorno virtual
+
+En Windows PowerShell:
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\activate
+```
+
+En macOS o Linux:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+Cuando el entorno este activo, deberias ver `(.venv)` al inicio de la terminal.
+
+### 4. Instalar dependencias
+
+```bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Instalacion editable opcional:
+Instalacion editable opcional, util si quieres ejecutar los comandos declarados en `pyproject.toml`:
 
 ```bash
 pip install -e .
 ```
 
-## Uso por consola
+### 5. Preparar datos de entrada
 
-### Entrenamiento supervisado con HAM10000
+Para probar el flujo no supervisado, coloca imagenes JPG, PNG, BMP o WEBP dentro de:
 
-Coloca HAM10000 en `data/raw/HAM10000/` y ejecuta:
+```text
+data/raw/
+```
+
+Si quieres entrenar con HAM10000, la estructura debe quedar asi:
+
+```text
+data/raw/HAM10000/
+|-- HAM10000_metadata.csv
+|-- HAM10000_images_part_1/
+|   `-- ISIC_0024306.jpg
+`-- HAM10000_images_part_2/
+    `-- ISIC_0034320.jpg
+```
+
+### 6. Ejecutar el proyecto
+
+Para abrir la interfaz web:
+
+```bash
+streamlit run app.py
+```
+
+Luego abre en el navegador la URL que muestre Streamlit, normalmente:
+
+```text
+http://localhost:8501
+```
+
+Desde la interfaz puedes cargar imagenes, elegir el algoritmo de agrupamiento y visualizar los resultados. Para usar la prediccion HAM10000 en la app, primero debe existir el modelo entrenado en:
+
+```text
+models/ham10000_cnn_from_scratch.pt
+```
+
+Para ejecutar clustering desde consola:
+
+```bash
+python train.py --input data/raw --method kmeans --clusters 4
+```
+
+Si usaste las imagenes sinteticas de prueba:
+
+```bash
+python train.py --input data/raw --method kmeans --clusters 3
+```
+
+Para entrenar la CNN con HAM10000:
 
 ```bash
 python train_ham10000.py --data-dir data/raw/HAM10000 --metadata data/raw/HAM10000/HAM10000_metadata.csv --epochs 20 --batch-size 32
@@ -141,69 +232,23 @@ Si tienes GPU con CUDA:
 python train_ham10000.py --device cuda --epochs 30 --batch-size 64
 ```
 
-Al finalizar se generan:
+### 7. Revisar resultados generados
 
+Despues de entrenar o ejecutar clustering, revisa:
+
+```text
+reports/
+models/
+```
+
+Los archivos principales son:
+
+- `reports/clustering_results.csv`
+- `models/skin_pattern_model.joblib`
 - `models/ham10000_cnn_from_scratch.pt`
 - `reports/ham10000_training_history.csv`
 - `reports/ham10000_confusion_matrix.csv`
 - `reports/ham10000_test_report.json`
-
-La CNN usada es `SmallDermCnn`. No llama a `torchvision.models`, no carga backbones y no descarga pesos.
-
-### Agrupamiento no supervisado
-
-Coloca las imagenes en `data/raw/` y ejecuta:
-
-```bash
-python train.py --input data/raw --method kmeans --clusters 4
-```
-
-Otros metodos disponibles:
-
-```bash
-python train.py --input data/raw --method fuzzy --clusters 4
-python train.py --input data/raw --method gmm --clusters 4
-python train.py --input data/raw --method dbscan
-```
-
-Al finalizar se generan:
-
-- `reports/clustering_results.csv`
-- `models/skin_pattern_model.joblib`
-
-Si aun no tienes imagenes reales, puedes crear un conjunto sintetico solo para probar la ejecucion. Estas imagenes no deben usarse como resultado final del proyecto:
-
-```bash
-python scripts/generate_sample_images.py
-python train.py --input data/raw --method kmeans --clusters 3
-```
-
-## Entrenamiento con informacion propia
-
-El entrenamiento se realiza usando unicamente las imagenes disponibles en la carpeta de entrada. El sistema no descarga pesos, no carga redes externas y no utiliza modelos previamente entrenados.
-
-Para entrenar con informacion del grupo:
-
-1. Colocar las imagenes recolectadas en `data/raw/`.
-2. Ejecutar `python train.py --input data/raw --method kmeans --clusters 4`.
-3. Revisar `reports/clustering_results.csv`.
-4. Ajustar el numero de clusters y comparar metricas.
-
-## Uso con interfaz web
-
-```bash
-streamlit run app.py
-```
-
-La app permite cargar varias imagenes, elegir el algoritmo, ajustar clusters y visualizar el mapa PCA junto con los resultados agrupados.
-
-## Interpretacion de metricas
-
-- **Silhouette Score:** mas alto suele indicar clusters mejor separados.
-- **Davies-Bouldin Index:** mas bajo suele indicar mejor separacion.
-- **Calinski-Harabasz Index:** mas alto suele indicar mejor estructura de clusters.
-
-Estas metricas no prueban diagnostico clinico; solo miden coherencia estadistica del agrupamiento.
 
 ## Dataset del proyecto
 
@@ -227,11 +272,3 @@ El entregable supervisado debe aclarar que HAM10000 es un dataset publico usado 
 ## Alcance actual
 
 El proyecto implementa un prototipo funcional de analisis no supervisado y una CNN supervisada para HAM10000. No debe presentarse como diagnostico clinico; sus resultados son academicos y dependen de la particion, el balance de clases y las epocas entrenadas.
-
-## Trabajo futuro
-
-- Probar arquitecturas CNN propias mas profundas si se cuenta con GPU.
-- Agregar UMAP o t-SNE para visualizaciones alternativas.
-- Comparar resultados con etiquetas clinicas si el dataset las incluye.
-- Guardar reportes graficos en PDF.
-- Mejorar segmentacion con modelos especializados para lesiones.
