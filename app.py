@@ -6,6 +6,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -15,7 +16,7 @@ from PIL import ImageOps
 
 from src.skin_patterns.config import MODELS_DIR, PipelineConfig, RAW_DATA_DIR, REPORTS_DIR
 from src.skin_patterns.ham10000 import SmallDermCnn
-from src.skin_patterns.pipeline import run_pipeline
+from src.skin_patterns.pipeline import build_feature_matrix
 
 
 HAM10000_LABELS = {
@@ -74,6 +75,58 @@ def predict_ham10000(image: Image.Image) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows).sort_values("probabilidad", ascending=False).reset_index(drop=True)
+
+
+@st.cache_resource
+def load_clustering_artifact(model_path: str) -> dict:
+    return joblib.load(model_path)
+
+
+def predict_dbscan_labels(model: object, embedding: np.ndarray) -> np.ndarray:
+    if not hasattr(model, "components_") or not hasattr(model, "core_sample_indices_"):
+        return np.full(embedding.shape[0], -1, dtype=int)
+
+    core_samples = model.components_
+    if len(core_samples) == 0:
+        return np.full(embedding.shape[0], -1, dtype=int)
+
+    distances = np.linalg.norm(embedding[:, None, :] - core_samples[None, :, :], axis=2)
+    nearest = distances.argmin(axis=1)
+    labels = model.labels_[model.core_sample_indices_][nearest]
+    labels = np.asarray(labels, dtype=int)
+    labels[distances.min(axis=1) > model.eps] = -1
+    return labels
+
+
+def predict_fuzzy_labels(model: dict, embedding: np.ndarray) -> np.ndarray:
+    centers = np.asarray(model["centers"])
+    distances = np.linalg.norm(embedding[:, None, :] - centers[None, :, :], axis=2)
+    return distances.argmin(axis=1)
+
+
+def predict_cluster_labels(model: object, embedding: np.ndarray) -> np.ndarray:
+    if hasattr(model, "predict"):
+        return np.asarray(model.predict(embedding))
+    if isinstance(model, dict) and "centers" in model:
+        return predict_fuzzy_labels(model, embedding)
+    return predict_dbscan_labels(model, embedding)
+
+
+def project_uploaded_images(input_dir: Path, artifact: dict) -> pd.DataFrame:
+    config = artifact.get("config") or PipelineConfig()
+    names, matrix = build_feature_matrix(list(input_dir.iterdir()), config)
+    scaled = artifact["scaler"].transform(matrix)
+    embedding = artifact["reducer"].transform(scaled)
+    labels = predict_cluster_labels(artifact["cluster_model"], embedding)
+
+    return pd.DataFrame(
+        {
+            "image": names,
+            "cluster": labels,
+            "x": embedding[:, 0],
+            "y": embedding[:, 1] if embedding.shape[1] > 1 else 0.0,
+        }
+    )
 
 
 def find_ham10000_metadata() -> Path:
@@ -251,27 +304,35 @@ def render_training_view() -> None:
 
 
 def render_clustering_view() -> None:
-    st.caption("Analisis exploratorio no supervisado para agrupar imagenes por similitud visual.")
+    st.caption("Inferencia con el modelo de clustering entrenado y visualizacion de coordenadas X/Y en PCA.")
+
+    model_path = MODELS_DIR / "skin_pattern_model.joblib"
+    report_path = REPORTS_DIR / "clustering_results.csv"
+
+    if not model_path.exists():
+        st.info("Primero entrena el clustering para usar el modelo guardado en las imagenes subidas.")
+        st.code("python train.py --input data/raw --method kmeans --clusters 4", language="bash")
+        return
+
+    artifact = load_clustering_artifact(str(model_path))
+    saved_config = artifact.get("config") or PipelineConfig()
+    saved_method = artifact.get("method", "clustering")
 
     with st.sidebar:
-        st.header("Configuracion de clustering")
-        method = st.selectbox("Metodo", ["kmeans", "dbscan"])
-        clusters = st.slider("Clusters", min_value=2, max_value=8, value=4)
-        image_size = st.select_slider("Tamano de imagen", options=[128, 160, 224, 256], value=224)
-        pca_components = st.slider("Componentes PCA", min_value=2, max_value=24, value=12)
+        st.header("Modelo de clustering")
+        st.metric("Metodo entrenado", str(saved_method).upper())
+        st.metric("Tamano de imagen", f"{saved_config.image_size[0]}x{saved_config.image_size[1]}")
+        if hasattr(artifact.get("reducer"), "n_components_"):
+            st.metric("Componentes PCA", int(artifact["reducer"].n_components_))
 
     uploaded_files = st.file_uploader(
-        "Carga imagenes dermatologicas",
+        "Carga imagenes dermatologicas para asignarlas al clustering entrenado",
         type=["jpg", "jpeg", "png", "bmp", "webp"],
         accept_multiple_files=True,
     )
 
     if not uploaded_files:
-        st.info("Carga al menos dos imagenes para ejecutar el agrupamiento.")
-        return
-
-    if len(uploaded_files) < 2:
-        st.warning("Se necesitan al menos dos imagenes para evaluar clusters.")
+        st.info("Carga una o mas imagenes para proyectarlas en el grafico X/Y y asignarles cluster.")
         return
 
     with TemporaryDirectory() as tmpdir:
@@ -280,40 +341,61 @@ def render_clustering_view() -> None:
             target = input_dir / uploaded_file.name
             target.write_bytes(uploaded_file.getbuffer())
 
-        config = PipelineConfig(
-            image_size=(image_size, image_size),
-            clusters=min(clusters, len(uploaded_files)),
-            pca_components=min(pca_components, len(uploaded_files)),
-        )
-
-        with st.spinner("Procesando imagenes y calculando clusters..."):
-            table, result = run_pipeline(input_dir, method=method, config=config, save_artifacts=False)
+        with st.spinner("Procesando imagenes con el modelo de clustering entrenado..."):
+            table = project_uploaded_images(input_dir, artifact)
 
         metric_cols = st.columns(3)
         metric_names = ["silhouette", "davies_bouldin", "calinski_harabasz"]
         for col, name in zip(metric_cols, metric_names):
-            value = result.metrics[name]
+            value = artifact.get("metrics", {}).get(name)
             col.metric(name.replace("_", " ").title(), "N/A" if value is None else f"{value:.3f}")
 
         left, right = st.columns([1.1, 1])
 
         with left:
-            st.subheader("Mapa PCA")
+            st.subheader("Grafico X/Y del PCA")
             fig, ax = plt.subplots(figsize=(7, 5))
-            scatter = ax.scatter(table["pc1"], table["pc2"], c=table["cluster"], cmap="tab10", s=80)
-            ax.set_xlabel("PC1")
-            ax.set_ylabel("PC2")
+
+            if report_path.exists():
+                trained_table = pd.read_csv(report_path)
+                ax.scatter(
+                    trained_table["pc1"],
+                    trained_table["pc2"],
+                    c=trained_table["cluster"],
+                    cmap="tab10",
+                    s=28,
+                    alpha=0.25,
+                    label="Entrenamiento",
+                )
+
+            scatter = ax.scatter(
+                table["x"],
+                table["y"],
+                c=table["cluster"],
+                cmap="tab10",
+                s=130,
+                marker="X",
+                edgecolors="black",
+                linewidths=0.8,
+                label="Subidas",
+            )
+            ax.set_xlabel("X (PC1)")
+            ax.set_ylabel("Y (PC2)")
             ax.grid(alpha=0.2)
             ax.legend(*scatter.legend_elements(), title="Cluster", loc="best")
             st.pyplot(fig)
 
         with right:
-            st.subheader("Resultados")
-            st.dataframe(table, use_container_width=True, hide_index=True)
+            st.subheader("Resultados de inferencia")
+            display_table = table.copy()
+            display_table["x"] = display_table["x"].round(4)
+            display_table["y"] = display_table["y"].round(4)
+            st.dataframe(display_table, use_container_width=True, hide_index=True)
 
         st.subheader("Imagenes agrupadas")
         for cluster_id in sorted(pd.unique(table["cluster"])):
-            st.markdown(f"**Cluster {cluster_id}**")
+            title = "Ruido / sin cluster" if int(cluster_id) == -1 else f"Cluster {cluster_id}"
+            st.markdown(f"**{title}**")
             cluster_files = table.loc[table["cluster"] == cluster_id, "image"].tolist()
             columns = st.columns(min(4, len(cluster_files)))
             for col, image_name in zip(columns, cluster_files):
