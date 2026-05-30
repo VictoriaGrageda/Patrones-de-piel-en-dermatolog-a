@@ -30,6 +30,7 @@ HAM10000_LABELS = {
 }
 
 
+# Lee archivos JSON generados por el entrenamiento supervisado HAM10000.
 def read_json(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
@@ -37,6 +38,8 @@ def read_json(path: Path) -> dict:
 
 @st.cache_resource
 def load_ham10000_model(model_path: str) -> tuple[SmallDermCnn, dict[str, int], dict[int, str], int]:
+    # Carga la CNN supervisada ya entrenada con etiquetas HAM10000.
+    # Este modelo predice clases reales como mel, nv, bcc, etc.
     checkpoint = torch.load(model_path, map_location="cpu")
     label_to_index = checkpoint["label_to_index"]
     index_to_label = {int(key): value for key, value in checkpoint["index_to_label"].items()}
@@ -49,6 +52,8 @@ def load_ham10000_model(model_path: str) -> tuple[SmallDermCnn, dict[str, int], 
 
 
 def image_to_tensor(image: Image.Image, image_size: int) -> torch.Tensor:
+    # Prepara la imagen nueva igual que durante el entrenamiento de la CNN.
+    # Se corrige orientacion, se redimensiona, se normaliza y se pasa a tensor.
     image = ImageOps.exif_transpose(image).convert("RGB")
     image = ImageOps.fit(image, (image_size, image_size), method=Image.Resampling.BILINEAR)
     array = np.asarray(image, dtype=np.float32) / 255.0
@@ -57,6 +62,8 @@ def image_to_tensor(image: Image.Image, image_size: int) -> torch.Tensor:
 
 
 def predict_ham10000(image: Image.Image) -> pd.DataFrame:
+    # Flujo supervisado: usa la CNN entrenada con HAM10000 para clasificar
+    # una imagen en una de las clases diagnosticas del dataset.
     model_path = MODELS_DIR / "ham10000_cnn_from_scratch.pt"
     model, _, index_to_label, image_size = load_ham10000_model(str(model_path))
     tensor = image_to_tensor(image, image_size)
@@ -79,10 +86,14 @@ def predict_ham10000(image: Image.Image) -> pd.DataFrame:
 
 @st.cache_resource
 def load_clustering_artifact(model_path: str) -> dict:
+    # Carga el artefacto del aprendizaje no supervisado:
+    # configuracion, scaler, PCA, modelo de clustering y metricas.
     return joblib.load(model_path)
 
 
 def predict_dbscan_labels(model: object, embedding: np.ndarray) -> np.ndarray:
+    # DBSCAN no tiene metodo predict. Para imagenes nuevas se asigna el
+    # cluster del punto nucleo mas cercano; si queda lejos, se marca como -1.
     if not hasattr(model, "components_") or not hasattr(model, "core_sample_indices_"):
         return np.full(embedding.shape[0], -1, dtype=int)
 
@@ -99,12 +110,14 @@ def predict_dbscan_labels(model: object, embedding: np.ndarray) -> np.ndarray:
 
 
 def predict_fuzzy_labels(model: dict, embedding: np.ndarray) -> np.ndarray:
+    # Fuzzy C-Means guarda centros. La imagen nueva se asigna al centro mas cercano.
     centers = np.asarray(model["centers"])
     distances = np.linalg.norm(embedding[:, None, :] - centers[None, :, :], axis=2)
     return distances.argmin(axis=1)
 
 
 def predict_cluster_labels(model: object, embedding: np.ndarray) -> np.ndarray:
+    # Unifica la inferencia para K-Means, GMM, Fuzzy C-Means y DBSCAN.
     if hasattr(model, "predict"):
         return np.asarray(model.predict(embedding))
     if isinstance(model, dict) and "centers" in model:
@@ -113,6 +126,9 @@ def predict_cluster_labels(model: object, embedding: np.ndarray) -> np.ndarray:
 
 
 def project_uploaded_images(input_dir: Path, artifact: dict) -> pd.DataFrame:
+    # Flujo no supervisado: las imagenes subidas no reentrenan el clustering.
+    # Se extraen caracteristicas, se aplica el mismo scaler y PCA del entrenamiento,
+    # y el modelo guardado decide en que cluster cae cada imagen.
     config = artifact.get("config") or PipelineConfig()
     names, matrix = build_feature_matrix(list(input_dir.iterdir()), config)
     scaled = artifact["scaler"].transform(matrix)
@@ -130,6 +146,7 @@ def project_uploaded_images(input_dir: Path, artifact: dict) -> pd.DataFrame:
 
 
 def find_ham10000_metadata() -> Path:
+    # Busca el CSV de HAM10000 en la ubicacion esperada del proyecto.
     default_path = RAW_DATA_DIR / "HAM10000" / "HAM10000_metadata.csv"
     if default_path.exists():
         return default_path
@@ -139,6 +156,7 @@ def find_ham10000_metadata() -> Path:
 
 
 def render_dataset_summary(metadata_path: Path) -> None:
+    # Muestra un resumen del dataset usado por el entrenamiento supervisado.
     st.subheader("Dataset de entrenamiento")
 
     if not metadata_path.exists():
@@ -177,6 +195,8 @@ def render_dataset_summary(metadata_path: Path) -> None:
 
 
 def render_training_results() -> None:
+    # Muestra los resultados guardados por train_ham10000.py:
+    # curvas de entrenamiento, reporte por clase y matriz de confusion.
     st.subheader("Resultados del entrenamiento")
 
     history_path = REPORTS_DIR / "ham10000_training_history.csv"
@@ -258,6 +278,7 @@ def render_training_results() -> None:
 
 
 def render_prediction_view() -> None:
+    # Vista supervisada: reconoce una imagen con la CNN HAM10000 ya entrenada.
     st.subheader("Reconocimiento de una imagen")
     model_path = MODELS_DIR / "ham10000_cnn_from_scratch.pt"
 
@@ -296,6 +317,7 @@ def render_prediction_view() -> None:
 
 
 def render_training_view() -> None:
+    # Pestaña de aprendizaje supervisado: prediccion CNN + informacion del entrenamiento.
     st.caption("CNN propia entrenada desde cero con HAM10000. No usa modelos preentrenados ni pesos externos.")
     metadata_path = find_ham10000_metadata()
     render_prediction_view()
@@ -304,6 +326,8 @@ def render_training_view() -> None:
 
 
 def render_clustering_view() -> None:
+    # Pestaña de aprendizaje no supervisado: usa el clustering entrenado con HAM10000.
+    # El grafico X/Y muestra el espacio PCA y ubica las imagenes subidas sobre ese mapa.
     st.caption("Inferencia con el modelo de clustering entrenado y visualizacion de coordenadas X/Y en PCA.")
 
     model_path = MODELS_DIR / "skin_pattern_model.joblib"
@@ -329,13 +353,19 @@ def render_clustering_view() -> None:
         "Carga imagenes dermatologicas para asignarlas al clustering entrenado",
         type=["jpg", "jpeg", "png", "bmp", "webp"],
         accept_multiple_files=True,
+        key="clustering_upload",
     )
+    uploaded_files = list(uploaded_files or [])
 
-    if not uploaded_files:
+    if len(uploaded_files) == 0:
         st.info("Carga una o mas imagenes para proyectarlas en el grafico X/Y y asignarles cluster.")
         return
 
+    st.caption(f"Imagenes listas para procesar: {len(uploaded_files)}")
+
     with TemporaryDirectory() as tmpdir:
+        # Streamlit entrega archivos en memoria; se guardan temporalmente para reutilizar
+        # el mismo pipeline de lectura y extraccion de caracteristicas.
         input_dir = Path(tmpdir)
         for uploaded_file in uploaded_files:
             target = input_dir / uploaded_file.name
@@ -357,6 +387,7 @@ def render_clustering_view() -> None:
             fig, ax = plt.subplots(figsize=(7, 5))
 
             if report_path.exists():
+                # Puntos de entrenamiento: imagenes HAM10000 usadas para crear el clustering.
                 trained_table = pd.read_csv(report_path)
                 ax.scatter(
                     trained_table["pc1"],
@@ -368,6 +399,7 @@ def render_clustering_view() -> None:
                     label="Entrenamiento",
                 )
 
+            # Puntos nuevos: imagenes subidas por el usuario proyectadas al mismo PCA.
             scatter = ax.scatter(
                 table["x"],
                 table["y"],

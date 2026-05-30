@@ -11,6 +11,7 @@ from .preprocessing import apply_mask, correct_contrast, load_image, segment_ski
 
 
 def discover_images(input_dir: str | Path) -> list[Path]:
+    # Recorre la carpeta del dataset y encuentra solo archivos de imagen soportados.
     directory = Path(input_dir)
     return sorted(
         path
@@ -20,6 +21,8 @@ def discover_images(input_dir: str | Path) -> list[Path]:
 
 
 def process_image(path: Path, config: PipelineConfig) -> FeatureVector:
+    # Pipeline de vision por computadora para clustering:
+    # carga imagen, mejora contraste, segmenta la region de piel y extrae rasgos.
     image = load_image(path, config.image_size)
     enhanced = correct_contrast(image)
     mask = segment_skin_region(enhanced)
@@ -28,6 +31,8 @@ def process_image(path: Path, config: PipelineConfig) -> FeatureVector:
 
 
 def build_feature_matrix(paths: list[Path], config: PipelineConfig) -> tuple[list[str], np.ndarray]:
+    # Convierte muchas imagenes en una matriz numerica.
+    # Cada fila representa una imagen y cada columna una caracteristica visual.
     if not paths:
         raise ValueError("No se encontraron imagenes en la carpeta indicada.")
 
@@ -43,6 +48,8 @@ def run_pipeline(
     config: PipelineConfig | None = None,
     save_artifacts: bool = True,
 ) -> tuple[pd.DataFrame, ClusterResult]:
+    # Entrenamiento no supervisado:
+    # no usa etiquetas del CSV; agrupa imagenes por similitud de color, textura y forma.
     config = config or PipelineConfig()
     paths = discover_images(input_dir)
     names, matrix = build_feature_matrix(paths, config)
@@ -71,6 +78,7 @@ def run_pipeline(
         output.attrs[metric] = value
 
     if save_artifacts:
+        # Guarda el modelo completo para que la app pueda usarlo despues con imagenes nuevas.
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         output.to_csv(REPORTS_DIR / "clustering_results.csv", index=False)

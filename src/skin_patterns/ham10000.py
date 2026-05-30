@@ -31,6 +31,7 @@ HAM10000_LABELS = {
 
 @dataclass(frozen=True)
 class TrainingConfig:
+    # Configuracion del entrenamiento supervisado HAM10000.
     data_dir: Path
     metadata: Path
     image_size: int = 128
@@ -47,6 +48,8 @@ class TrainingConfig:
 
 
 class Ham10000Dataset(Dataset):
+    # Dataset de PyTorch: cada item devuelve una imagen y su etiqueta real dx.
+    # Esto es aprendizaje supervisado porque la red aprende usando esas etiquetas.
     def __init__(
         self,
         frame: pd.DataFrame,
@@ -64,6 +67,7 @@ class Ham10000Dataset(Dataset):
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         row = self.frame.iloc[index]
+        # La imagen se transforma igual para todos los lotes: RGB, tamano fijo y normalizacion.
         image = Image.open(row["image_path"])
         image = ImageOps.exif_transpose(image).convert("RGB")
         image = ImageOps.fit(image, (self.image_size, self.image_size), method=Image.Resampling.BILINEAR)
@@ -79,6 +83,7 @@ class Ham10000Dataset(Dataset):
 
     @staticmethod
     def _augment(image: Image.Image) -> Image.Image:
+        # Aumentacion de datos: crea variaciones visuales para que la CNN generalice mejor.
         if random.random() < 0.5:
             image = ImageOps.mirror(image)
         if random.random() < 0.2:
@@ -115,6 +120,7 @@ class SmallDermCnn(nn.Module):
 
     @staticmethod
     def _block(in_channels: int, out_channels: int) -> nn.Sequential:
+        # Bloque convolucional basico: extrae patrones visuales y reduce resolucion.
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
@@ -130,6 +136,7 @@ class SmallDermCnn(nn.Module):
 
 
 def seed_everything(seed: int) -> None:
+    # Fija semillas para que el entrenamiento sea mas reproducible.
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -137,12 +144,14 @@ def seed_everything(seed: int) -> None:
 
 
 def resolve_device(value: str) -> torch.device:
+    # Usa GPU si existe y si el usuario deja device="auto"; si no, usa CPU.
     if value != "auto":
         return torch.device(value)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def index_images(data_dir: Path) -> dict[str, Path]:
+    # Relaciona cada image_id de HAM10000 con la ruta real del archivo de imagen.
     images: dict[str, Path] = {}
     for path in data_dir.rglob("*"):
         if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
@@ -151,6 +160,7 @@ def index_images(data_dir: Path) -> dict[str, Path]:
 
 
 def load_ham10000_frame(data_dir: Path, metadata_path: Path) -> pd.DataFrame:
+    # Carga el CSV de HAM10000 y une cada fila con su archivo de imagen.
     if not metadata_path.exists():
         raise FileNotFoundError(f"No se encontro metadata: {metadata_path}")
 
@@ -172,6 +182,7 @@ def load_ham10000_frame(data_dir: Path, metadata_path: Path) -> pd.DataFrame:
 
 
 def split_frame(frame: pd.DataFrame, config: TrainingConfig) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    # Division estratificada: conserva proporcion de clases en train, validacion y prueba.
     train_frame, temp_frame = train_test_split(
         frame,
         test_size=config.val_size + config.test_size,
@@ -189,6 +200,7 @@ def split_frame(frame: pd.DataFrame, config: TrainingConfig) -> tuple[pd.DataFra
 
 
 def limit_frame(frame: pd.DataFrame, max_samples: int | None, seed: int) -> pd.DataFrame:
+    # Permite entrenar rapido con una muestra pequena sin perder todas las clases.
     if max_samples is None or max_samples >= len(frame):
         return frame
 
@@ -212,6 +224,7 @@ def build_loaders(
     label_to_index: dict[str, int],
     config: TrainingConfig,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
+    # DataLoaders: entregan lotes de imagenes a la CNN durante entrenamiento y evaluacion.
     train_dataset = Ham10000Dataset(train_frame, label_to_index, config.image_size, augment=True)
     val_dataset = Ham10000Dataset(val_frame, label_to_index, config.image_size)
     test_dataset = Ham10000Dataset(test_frame, label_to_index, config.image_size)
@@ -228,6 +241,7 @@ def build_loaders(
 
 
 def class_weights(train_frame: pd.DataFrame, label_to_index: dict[str, int], device: torch.device) -> torch.Tensor:
+    # Compensa desbalance de clases: HAM10000 tiene muchas mas imagenes de algunas clases.
     counts = train_frame["dx"].value_counts()
     total = float(len(train_frame))
     weights = [total / (len(label_to_index) * counts[label]) for label in label_to_index]
@@ -241,6 +255,7 @@ def run_epoch(
     device: torch.device,
     optimizer: torch.optim.Optimizer | None = None,
 ) -> dict[str, float]:
+    # Ejecuta una epoca. Si recibe optimizer, entrena; si no, solo evalua.
     training = optimizer is not None
     model.train(training)
     loss_sum = 0.0
@@ -278,6 +293,7 @@ def evaluate_predictions(
     device: torch.device,
     index_to_label: dict[int, str],
 ) -> tuple[dict[str, object], np.ndarray]:
+    # Evalua el modelo final en el conjunto de prueba y genera reporte + matriz de confusion.
     model.eval()
     predictions: list[int] = []
     targets: list[int] = []
@@ -302,6 +318,11 @@ def evaluate_predictions(
 
 
 def train_ham10000(config: TrainingConfig) -> dict[str, object]:
+    # Flujo completo supervisado:
+    # 1. Carga metadata con etiquetas dx.
+    # 2. Divide en train/val/test.
+    # 3. Entrena una CNN desde cero.
+    # 4. Guarda modelo y reportes.
     seed_everything(config.seed)
     device = resolve_device(config.device)
     frame = load_ham10000_frame(config.data_dir, config.metadata)
@@ -322,6 +343,7 @@ def train_ham10000(config: TrainingConfig) -> dict[str, object]:
     best_state = None
 
     for epoch in range(1, config.epochs + 1):
+        # Entrena con train_loader y valida con val_loader para elegir el mejor modelo.
         train_metrics = run_epoch(model, train_loader, criterion, device, optimizer)
         val_metrics = run_epoch(model, val_loader, criterion, device)
         scheduler.step(val_metrics["macro_f1"])
@@ -343,6 +365,7 @@ def train_ham10000(config: TrainingConfig) -> dict[str, object]:
         )
 
         if val_metrics["macro_f1"] > best_val_f1:
+            # Se guarda el mejor estado segun macro F1 de validacion.
             best_val_f1 = val_metrics["macro_f1"]
             best_state = {key: value.detach().cpu() for key, value in model.state_dict().items()}
 
@@ -354,6 +377,7 @@ def train_ham10000(config: TrainingConfig) -> dict[str, object]:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     model_path = MODELS_DIR / "ham10000_cnn_from_scratch.pt"
+    # Este archivo es el que usa app.py para reconocer una imagen nueva.
     torch.save(
         {
             "model_state": model.state_dict(),

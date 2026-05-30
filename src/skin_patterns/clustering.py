@@ -10,6 +10,8 @@ from sklearn.preprocessing import StandardScaler
 
 @dataclass
 class ClusterResult:
+    # Resultado completo del clustering: etiquetas, coordenadas PCA,
+    # metricas, modelo entrenado y transformadores usados.
     labels: np.ndarray
     embedding: np.ndarray
     metrics: dict[str, float | None]
@@ -19,6 +21,8 @@ class ClusterResult:
 
 
 def reduce_features(features: np.ndarray, n_components: int, random_state: int) -> tuple[np.ndarray, StandardScaler, PCA]:
+    # Estandariza las caracteristicas y reduce dimensiones con PCA.
+    # Las dos primeras componentes se usan como coordenadas X/Y del grafico.
     scaler = StandardScaler()
     scaled = scaler.fit_transform(features)
     max_components = max(1, min(n_components, scaled.shape[0], scaled.shape[1]))
@@ -27,6 +31,8 @@ def reduce_features(features: np.ndarray, n_components: int, random_state: int) 
 
 
 def evaluate_clusters(embedding: np.ndarray, labels: np.ndarray) -> dict[str, float | None]:
+    # Calcula metricas internas de clustering. No necesita etiquetas reales,
+    # por eso sirve para aprendizaje no supervisado.
     unique_labels = set(labels.tolist())
     if len(unique_labels) < 2 or len(unique_labels) >= len(labels):
         return {
@@ -50,6 +56,8 @@ def fuzzy_c_means(
     error: float = 1e-5,
     random_state: int = 42,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    # Implementacion simple de Fuzzy C-Means:
+    # cada imagen tiene grados de pertenencia y se toma el cluster dominante.
     rng = np.random.default_rng(random_state)
     membership = rng.random((clusters, data.shape[0]))
     membership = membership / membership.sum(axis=0, keepdims=True)
@@ -81,6 +89,8 @@ def cluster_features(
     fuzzy_max_iter: int,
     fuzzy_error: float,
 ) -> ClusterResult:
+    # Selecciona y entrena el algoritmo no supervisado indicado.
+    # El resultado son clusters numericos, no diagnosticos medicos.
     embedding, scaler, reducer = reduce_features(features, pca_components, random_state)
     method = method.lower()
     effective_clusters = max(1, min(clusters, embedding.shape[0]))
