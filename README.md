@@ -19,7 +19,7 @@ Construir un prototipo capaz de:
 - Entrenar un modelo de agrupamiento sin usar etiquetas.
 - Entrenar una CNN propia para identificar las 7 clases de HAM10000 desde inicializacion aleatoria.
 - Reducir dimensionalidad con PCA.
-- Agrupar patrones con K-Means, GMM, DBSCAN o Fuzzy C-Means.
+- Agrupar patrones con K-Means o DBSCAN.
 - Evaluar la calidad de agrupamiento con metricas no supervisadas.
 - Evaluar clasificacion supervisada con accuracy, macro F1, matriz de confusion y reporte por clase.
 - Visualizar clusters y resultados.
@@ -31,7 +31,7 @@ Construir un prototipo capaz de:
 
 En el proyecto estas areas se aplican asi:
 
-- **Aprendizaje no supervisado:** se usa en el modulo de clustering. El sistema no recibe diagnosticos ni etiquetas; extrae color, textura y forma de cada imagen, reduce dimensionalidad con PCA y agrupa los casos parecidos con K-Means, GMM, DBSCAN o Fuzzy C-Means. El resultado son grupos numericos, no enfermedades.
+- **Aprendizaje no supervisado:** se usa en el modulo de clustering. El sistema no recibe diagnosticos ni etiquetas; extrae color, textura y forma de cada imagen, reduce dimensionalidad con PCA y agrupa los casos parecidos con K-Means o DBSCAN. El resultado son grupos numericos, no enfermedades.
 - **Vision por computadora:** se aplica antes de ambos modulos. Permite cargar la imagen, corregir contraste, segmentar una region de interes y convertir la imagen en informacion numerica.
 - **Identificacion supervisada:** se usa en el modulo HAM10000. En este caso si existen etiquetas reales (`dx`) en la metadata, por eso la CNN aprende a clasificar entre `akiec`, `bcc`, `bkl`, `df`, `mel`, `nv` y `vasc`.
 
@@ -79,7 +79,7 @@ El script busca las imagenes de forma recursiva y las une con la metadata usando
    - Forma: area, perimetro, excentricidad, solidez, extension y circularidad.
 5. **Reduccion de dimensionalidad:** PCA para estabilizar el clustering y facilitar la visualizacion.
 6. **Entrenamiento no supervisado:** el algoritmo aprende los grupos directamente desde las imagenes disponibles en `data/raw/`.
-7. **Clustering:** K-Means, Gaussian Mixture Model, DBSCAN o Fuzzy C-Means.
+7. **Clustering:** K-Means o DBSCAN.
 8. **Evaluacion:** Silhouette Score, Davies-Bouldin Index y Calinski-Harabasz Index.
 9. **Interpretacion:** tabla de imagenes agrupadas y mapa PCA en 2D.
 
@@ -229,24 +229,45 @@ Luego abre en el navegador la URL que muestre Streamlit, normalmente:
 http://localhost:8501
 ```
 
-Desde la interfaz puedes cargar imagenes, elegir el algoritmo de agrupamiento y visualizar los resultados. Para usar la prediccion HAM10000 en la app, primero debe existir el modelo entrenado en:
+Desde la interfaz puedes cargar imagenes, elegir el algoritmo de agrupamiento, entrenar el modelo seleccionado y visualizar los resultados. En la pestana **Clustering exploratorio** se puede escoger entre:
+
+- K-Means.
+- DBSCAN.
+
+K-Means usa el valor **Numero de clusters**. DBSCAN no usa ese valor porque forma grupos por densidad y tambien puede marcar imagenes como ruido o sin cluster.
+
+Para usar la prediccion HAM10000 en la app, primero debe existir el modelo entrenado en:
 
 ```text
 models/ham10000_cnn_from_scratch.pt
 ```
 
-Para ejecutar clustering desde consola:
+Para ejecutar clustering desde consola con K-Means:
 
 ```bash
 python train.py --input data/raw --method kmeans --clusters 4
 ```
 
-Otros metodos disponibles para clustering:
+Otro metodo disponible para clustering:
 
 ```bash
-python train.py --input data/raw --method gmm --clusters 4
 python train.py --input data/raw --method dbscan
-python train.py --input data/raw --method fuzzy --clusters 4
+```
+
+Cada entrenamiento guarda un modelo y un reporte separados por metodo. Asi puedes entrenar varios algoritmos sin perder el anterior:
+
+```text
+models/skin_pattern_model_kmeans.joblib
+models/skin_pattern_model_dbscan.joblib
+reports/clustering_results_kmeans.csv
+reports/clustering_results_dbscan.csv
+```
+
+Tambien se actualizan estos archivos generales para compatibilidad con versiones anteriores de la app:
+
+```text
+models/skin_pattern_model.joblib
+reports/clustering_results.csv
 ```
 
 Si usaste las imagenes sinteticas de prueba:
@@ -286,6 +307,8 @@ Los archivos principales son:
 
 - `reports/clustering_results.csv`
 - `models/skin_pattern_model.joblib`
+- `reports/clustering_results_<metodo>.csv`
+- `models/skin_pattern_model_<metodo>.joblib`
 - `models/ham10000_cnn_from_scratch.pt`
 - `reports/ham10000_training_history.csv`
 - `reports/ham10000_confusion_matrix.csv`
@@ -303,8 +326,8 @@ Flujo:
 2. Aplica vision por computadora: carga, redimensionamiento, contraste y segmentacion aproximada.
 3. Extrae caracteristicas de color, textura y forma.
 4. Estandariza las caracteristicas y aplica PCA.
-5. Agrupa con K-Means, GMM, DBSCAN o Fuzzy C-Means.
-6. Guarda `reports/clustering_results.csv` y `models/skin_pattern_model.joblib`.
+5. Agrupa con K-Means o DBSCAN.
+6. Guarda el reporte y modelo por metodo, por ejemplo `reports/clustering_results_kmeans.csv` y `models/skin_pattern_model_kmeans.joblib`.
 
 Interpretacion: un cluster indica similitud visual entre imagenes. No equivale automaticamente a una enfermedad.
 

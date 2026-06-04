@@ -11,9 +11,6 @@ class PipelineConfig:
     clusters: int = 4
     pca_components: int = 12
     random_state: int = 42
-    fuzzy_m: float = 2.0
-    fuzzy_max_iter: int = 150
-    fuzzy_error: float = 1e-5
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

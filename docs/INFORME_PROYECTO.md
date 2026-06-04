@@ -21,7 +21,7 @@ Desarrollar un prototipo de IA que procese imagenes dermatologicas y entrene un 
 - Extraer caracteristicas visuales de color, textura y forma.
 - Entrenar los modelos con imagenes propias del proyecto, sin pesos preentrenados.
 - Aplicar reduccion de dimensionalidad con PCA.
-- Comparar algoritmos de clustering: K-Means, GMM, DBSCAN y Fuzzy C-Means.
+- Comparar algoritmos de clustering: K-Means y DBSCAN.
 - Evaluar los agrupamientos con metricas no supervisadas.
 - Visualizar los resultados en una interfaz simple.
 
@@ -47,7 +47,7 @@ HAM10000 contiene siete clases: `akiec`, `bcc`, `bkl`, `df`, `mel`, `nv` y `vasc
 
 ### Clustering difuso
 
-Fuzzy C-Means permite que una imagen tenga grados de pertenencia a varios clusters. Esto es util en dominios medicos donde los limites entre patrones pueden ser ambiguos.
+DBSCAN permite detectar grupos por densidad y separar puntos que no pertenecen claramente a ningun grupo, marcandolos como ruido.
 
 ### PCA
 

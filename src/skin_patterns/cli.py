@@ -13,10 +13,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--method",
         default="kmeans",
-        choices=["kmeans", "gmm", "dbscan", "fuzzy", "fcm", "fuzzy_c_means"],
+        choices=["kmeans", "dbscan"],
         help="Algoritmo de clustering.",
     )
-    parser.add_argument("--clusters", type=int, default=4, help="Numero de clusters para K-Means, GMM o Fuzzy.")
+    parser.add_argument("--clusters", type=int, default=4, help="Numero de clusters para K-Means.")
     parser.add_argument("--pca-components", type=int, default=12, help="Componentes PCA para reducir dimensionalidad.")
     parser.add_argument("--image-size", type=int, default=224, help="Tamano cuadrado de entrada en pixeles.")
     parser.add_argument("--no-save", action="store_true", help="No guardar resultados ni modelo.")

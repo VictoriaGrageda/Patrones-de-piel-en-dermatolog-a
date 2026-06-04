@@ -10,6 +10,14 @@ from .features import FeatureVector, extract_features
 from .preprocessing import apply_mask, correct_contrast, load_image, segment_skin_region
 
 
+def clustering_artifact_path(method: str) -> Path:
+    return MODELS_DIR / f"skin_pattern_model_{method.lower()}.joblib"
+
+
+def clustering_report_path(method: str) -> Path:
+    return REPORTS_DIR / f"clustering_results_{method.lower()}.csv"
+
+
 def discover_images(input_dir: str | Path) -> list[Path]:
     # Recorre la carpeta del dataset y encuentra solo archivos de imagen soportados.
     directory = Path(input_dir)
@@ -60,9 +68,6 @@ def run_pipeline(
         clusters=config.clusters,
         pca_components=config.pca_components,
         random_state=config.random_state,
-        fuzzy_m=config.fuzzy_m,
-        fuzzy_max_iter=config.fuzzy_max_iter,
-        fuzzy_error=config.fuzzy_error,
     )
 
     output = pd.DataFrame(
@@ -81,17 +86,21 @@ def run_pipeline(
         # Guarda el modelo completo para que la app pueda usarlo despues con imagenes nuevas.
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        method = method.lower()
+        artifact = {
+            "config": config,
+            "method": method,
+            "cluster_model": result.model,
+            "scaler": result.scaler,
+            "reducer": result.reducer,
+            "metrics": result.metrics,
+        }
+
+        output.to_csv(clustering_report_path(method), index=False)
+        joblib.dump(artifact, clustering_artifact_path(method))
+
+        # Mantiene compatibilidad con la version anterior de la app.
         output.to_csv(REPORTS_DIR / "clustering_results.csv", index=False)
-        joblib.dump(
-            {
-                "config": config,
-                "method": method,
-                "cluster_model": result.model,
-                "scaler": result.scaler,
-                "reducer": result.reducer,
-                "metrics": result.metrics,
-            },
-            MODELS_DIR / "skin_pattern_model.joblib",
-        )
+        joblib.dump(artifact, MODELS_DIR / "skin_pattern_model.joblib")
 
     return output, result

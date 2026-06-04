@@ -16,7 +16,7 @@ from PIL import ImageOps
 
 from src.skin_patterns.config import MODELS_DIR, PipelineConfig, RAW_DATA_DIR, REPORTS_DIR
 from src.skin_patterns.ham10000 import SmallDermCnn
-from src.skin_patterns.pipeline import build_feature_matrix
+from src.skin_patterns.pipeline import build_feature_matrix, clustering_artifact_path, clustering_report_path, run_pipeline
 
 
 HAM10000_LABELS = {
@@ -27,6 +27,11 @@ HAM10000_LABELS = {
     "mel": "Melanoma",
     "nv": "Nevus melanociticos",
     "vasc": "Lesiones vasculares",
+}
+
+CLUSTERING_METHODS = {
+    "kmeans": "K-Means",
+    "dbscan": "DBSCAN",
 }
 
 
@@ -109,19 +114,10 @@ def predict_dbscan_labels(model: object, embedding: np.ndarray) -> np.ndarray:
     return labels
 
 
-def predict_fuzzy_labels(model: dict, embedding: np.ndarray) -> np.ndarray:
-    # Fuzzy C-Means guarda centros. La imagen nueva se asigna al centro mas cercano.
-    centers = np.asarray(model["centers"])
-    distances = np.linalg.norm(embedding[:, None, :] - centers[None, :, :], axis=2)
-    return distances.argmin(axis=1)
-
-
 def predict_cluster_labels(model: object, embedding: np.ndarray) -> np.ndarray:
-    # Unifica la inferencia para K-Means, GMM, Fuzzy C-Means y DBSCAN.
+    # Unifica la inferencia para K-Means y DBSCAN.
     if hasattr(model, "predict"):
         return np.asarray(model.predict(embedding))
-    if isinstance(model, dict) and "centers" in model:
-        return predict_fuzzy_labels(model, embedding)
     return predict_dbscan_labels(model, embedding)
 
 
@@ -330,12 +326,46 @@ def render_clustering_view() -> None:
     # El grafico X/Y muestra el espacio PCA y ubica las imagenes subidas sobre ese mapa.
     st.caption("Inferencia con el modelo de clustering entrenado y visualizacion de coordenadas X/Y en PCA.")
 
-    model_path = MODELS_DIR / "skin_pattern_model.joblib"
-    report_path = REPORTS_DIR / "clustering_results.csv"
+    selected_method = st.selectbox(
+        "Modelo de clustering",
+        options=list(CLUSTERING_METHODS),
+        format_func=lambda method: CLUSTERING_METHODS[method],
+        help="Escoge el algoritmo que quieres entrenar o usar para inferencia.",
+    )
+    cluster_count = st.number_input(
+        "Numero de clusters",
+        min_value=2,
+        max_value=12,
+        value=4,
+        step=1,
+        disabled=selected_method == "dbscan",
+        help="DBSCAN calcula los grupos por densidad y no usa este valor.",
+    )
+
+    if st.button("Entrenar modelo seleccionado"):
+        with st.spinner(f"Entrenando {CLUSTERING_METHODS[selected_method]}..."):
+            config = PipelineConfig(clusters=int(cluster_count))
+            run_pipeline(RAW_DATA_DIR, method=selected_method, config=config, save_artifacts=True)
+            load_clustering_artifact.clear()
+        st.success(f"Modelo {CLUSTERING_METHODS[selected_method]} entrenado y guardado.")
+
+    model_path = clustering_artifact_path(selected_method)
+    report_path = clustering_report_path(selected_method)
+    legacy_model_path = MODELS_DIR / "skin_pattern_model.joblib"
+    legacy_report_path = REPORTS_DIR / "clustering_results.csv"
+
+    if not model_path.exists() and legacy_model_path.exists():
+        legacy_artifact = load_clustering_artifact(str(legacy_model_path))
+        if str(legacy_artifact.get("method", "")).lower() == selected_method:
+            model_path = legacy_model_path
+            report_path = legacy_report_path
 
     if not model_path.exists():
-        st.info("Primero entrena el clustering para usar el modelo guardado en las imagenes subidas.")
-        st.code("python train.py --input data/raw --method kmeans --clusters 4", language="bash")
+        st.info("Primero entrena este metodo para usarlo con las imagenes subidas.")
+        command = f"python train.py --input data/raw --method {selected_method}"
+        if selected_method != "dbscan":
+            command += f" --clusters {int(cluster_count)}"
+        st.code(command, language="bash")
         return
 
     artifact = load_clustering_artifact(str(model_path))
