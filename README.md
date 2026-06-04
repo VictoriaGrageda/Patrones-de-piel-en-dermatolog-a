@@ -5,7 +5,6 @@ Proyecto de Inteligencia Artificial 1 orientado al analisis de imagenes dermatol
 - **Clustering exploratorio:** aprendizaje no supervisado para agrupar imagenes por similitud visual.
 - **Identificacion HAM10000:** aprendizaje supervisado para clasificar imagenes en las 7 clases del dataset HAM10000 mediante una CNN propia entrenada desde cero.
 
-> Este proyecto es academico. No reemplaza el diagnostico de un dermatologo ni debe usarse como herramienta medica final.
 > El modelo HAM10000 se entrena desde cero con las imagenes locales del dataset. No se usan modelos preentrenados, backbones externos ni pesos descargados.
 
 ## Objetivo
