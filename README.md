@@ -1,6 +1,9 @@
 # Patrones de piel en dermatologia
 
-Proyecto de Inteligencia Artificial 1 orientado al analisis de imagenes dermatologicas mediante vision por computadora. El repositorio conserva un flujo exploratorio no supervisado y agrega entrenamiento supervisado con HAM10000 usando una CNN propia entrenada desde cero.
+Proyecto de Inteligencia Artificial 1 orientado al analisis de imagenes dermatologicas mediante vision por computadora. El sistema tiene dos modulos principales:
+
+- **Clustering exploratorio:** aprendizaje no supervisado para agrupar imagenes por similitud visual.
+- **Identificacion HAM10000:** aprendizaje supervisado para clasificar imagenes en las 7 clases del dataset HAM10000 mediante una CNN propia entrenada desde cero.
 
 > Este proyecto es academico. No reemplaza el diagnostico de un dermatologo ni debe usarse como herramienta medica final.
 > El modelo HAM10000 se entrena desde cero con las imagenes locales del dataset. No se usan modelos preentrenados, backbones externos ni pesos descargados.
@@ -13,8 +16,8 @@ Construir un prototipo capaz de:
 - Preprocesar y normalizar las imagenes.
 - Segmentar una region de interes aproximada.
 - Extraer caracteristicas visuales interpretables.
-- Entrenar el modelo de agrupamiento con la informacion propia del dataset.
-- Entrenar una CNN propia para clasificar las 7 clases de HAM10000 desde inicializacion aleatoria.
+- Entrenar un modelo de agrupamiento sin usar etiquetas.
+- Entrenar una CNN propia para identificar las 7 clases de HAM10000 desde inicializacion aleatoria.
 - Reducir dimensionalidad con PCA.
 - Agrupar patrones con K-Means, GMM, DBSCAN o Fuzzy C-Means.
 - Evaluar la calidad de agrupamiento con metricas no supervisadas.
@@ -23,12 +26,26 @@ Construir un prototipo capaz de:
 
 ## Area y subarea
 
-- **Area:** Vision por computadora y aprendizaje automatico.
-- **Subarea:** Vision por computadora aplicada a dermatologia.
+- **Area:** Aprendizaje no supervisado y aprendizaje supervisado dentro de Inteligencia Artificial.
+- **Subarea:** Vision por computadora aplicada al analisis de imagenes dermatologicas.
+
+En el proyecto estas areas se aplican asi:
+
+- **Aprendizaje no supervisado:** se usa en el modulo de clustering. El sistema no recibe diagnosticos ni etiquetas; extrae color, textura y forma de cada imagen, reduce dimensionalidad con PCA y agrupa los casos parecidos con K-Means, GMM, DBSCAN o Fuzzy C-Means. El resultado son grupos numericos, no enfermedades.
+- **Vision por computadora:** se aplica antes de ambos modulos. Permite cargar la imagen, corregir contraste, segmentar una region de interes y convertir la imagen en informacion numerica.
+- **Identificacion supervisada:** se usa en el modulo HAM10000. En este caso si existen etiquetas reales (`dx`) en la metadata, por eso la CNN aprende a clasificar entre `akiec`, `bcc`, `bkl`, `df`, `mel`, `nv` y `vasc`.
 
 ## Dataset HAM10000
 
-El entrenamiento supervisado usa HAM10000, un dataset publico de imagenes dermatoscopicas con siete diagnosticos en la columna `dx`:
+El entrenamiento supervisado usa HAM10000, un dataset publico de imagenes dermatoscopicas con siete diagnosticos en la columna `dx`.
+
+Fuente del dataset usado en el proyecto:
+
+```text
+https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000?resource=download
+```
+
+Despues de descargarlo desde Kaggle, los archivos deben organizarse localmente dentro de `data/raw/HAM10000/`.
 
 - `akiec`: queratosis actinica / enfermedad de Bowen.
 - `bcc`: carcinoma basocelular.
@@ -66,6 +83,8 @@ El script busca las imagenes de forma recursiva y las une con la metadata usando
 8. **Evaluacion:** Silhouette Score, Davies-Bouldin Index y Calinski-Harabasz Index.
 9. **Interpretacion:** tabla de imagenes agrupadas y mapa PCA en 2D.
 
+### Modulo 2: identificacion supervisada HAM10000
+
 Para HAM10000 se usa otro flujo:
 
 1. Lectura de `HAM10000_metadata.csv`.
@@ -75,6 +94,8 @@ Para HAM10000 se usa otro flujo:
 5. Inicializacion aleatoria de pesos.
 6. Entrenamiento con `CrossEntropyLoss` ponderada por desbalance de clases.
 7. Evaluacion con accuracy, macro F1, matriz de confusion y reporte por clase.
+
+Este modulo si realiza identificacion/clasificacion porque aprende con etiquetas reales del dataset. Aun asi, sus salidas son resultados academicos y no diagnosticos clinicos.
 
 ## Estructura
 
@@ -177,7 +198,13 @@ Para probar el flujo no supervisado, coloca imagenes JPG, PNG, BMP o WEBP dentro
 data/raw/
 ```
 
-Si quieres entrenar con HAM10000, la estructura debe quedar asi:
+Si quieres entrenar con HAM10000, descarga el dataset desde Kaggle:
+
+```text
+https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000?resource=download
+```
+
+Luego descomprime los archivos y deja la estructura asi:
 
 ```text
 data/raw/HAM10000/
@@ -214,6 +241,14 @@ Para ejecutar clustering desde consola:
 python train.py --input data/raw --method kmeans --clusters 4
 ```
 
+Otros metodos disponibles para clustering:
+
+```bash
+python train.py --input data/raw --method gmm --clusters 4
+python train.py --input data/raw --method dbscan
+python train.py --input data/raw --method fuzzy --clusters 4
+```
+
 Si usaste las imagenes sinteticas de prueba:
 
 ```bash
@@ -226,10 +261,16 @@ Para entrenar la CNN con HAM10000:
 python train_ham10000.py --data-dir data/raw/HAM10000 --metadata data/raw/HAM10000/HAM10000_metadata.csv --epochs 20 --batch-size 32
 ```
 
+Entrenamiento rapido de prueba con una muestra reducida:
+
+```bash
+python train_ham10000.py --data-dir data/raw/HAM10000 --metadata data/raw/HAM10000/HAM10000_metadata.csv --epochs 1 --batch-size 32 --image-size 64 --max-samples 1000
+```
+
 Si tienes GPU con CUDA:
 
 ```bash
-python train_ham10000.py --device cuda --epochs 30 --batch-size 64
+python train_ham10000.py --data-dir data/raw/HAM10000 --metadata data/raw/HAM10000/HAM10000_metadata.csv --device cuda --epochs 30 --batch-size 64
 ```
 
 ### 7. Revisar resultados generados
@@ -250,9 +291,46 @@ Los archivos principales son:
 - `reports/ham10000_confusion_matrix.csv`
 - `reports/ham10000_test_report.json`
 
+## Como se aplican los dos sectores del proyecto
+
+### 1. Sector de clustering
+
+Este sector corresponde al aprendizaje no supervisado. Su objetivo es encontrar grupos de imagenes con patrones visuales similares sin usar etiquetas medicas.
+
+Flujo:
+
+1. Lee imagenes desde `data/raw/` o desde una subcarpeta como `data/raw/HAM10000/`.
+2. Aplica vision por computadora: carga, redimensionamiento, contraste y segmentacion aproximada.
+3. Extrae caracteristicas de color, textura y forma.
+4. Estandariza las caracteristicas y aplica PCA.
+5. Agrupa con K-Means, GMM, DBSCAN o Fuzzy C-Means.
+6. Guarda `reports/clustering_results.csv` y `models/skin_pattern_model.joblib`.
+
+Interpretacion: un cluster indica similitud visual entre imagenes. No equivale automaticamente a una enfermedad.
+
+### 2. Sector de identificacion
+
+Este sector corresponde al aprendizaje supervisado. Usa HAM10000 porque ese dataset trae etiquetas reales en `HAM10000_metadata.csv`.
+
+Flujo:
+
+1. Une cada `image_id` del CSV con su archivo de imagen.
+2. Divide los datos en entrenamiento, validacion y prueba.
+3. Entrena la CNN `SmallDermCnn` desde cero.
+4. Evalua con metricas de clasificacion.
+5. Guarda `models/ham10000_cnn_from_scratch.pt` y reportes en `reports/`.
+
+Interpretacion: el modelo devuelve probabilidades para las 7 clases HAM10000. Es una identificacion academica basada en el dataset, no una decision medica final.
+
 ## Dataset del proyecto
 
-Para la parte supervisada del proyecto se debe usar HAM10000 en `data/raw/HAM10000/`. Para la parte exploratoria no supervisada se puede trabajar con imagenes del grupo o una subcarpeta de HAM10000.
+Para la parte supervisada del proyecto se debe usar HAM10000 en `data/raw/HAM10000/`. El dataset usado se obtuvo desde Kaggle:
+
+```text
+https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000?resource=download
+```
+
+Para la parte exploratoria no supervisada se puede trabajar con imagenes del grupo o una subcarpeta de HAM10000.
 
 Si se quiere ejecutar clustering con HAM10000 sin etiquetas, se puede apuntar a la carpeta raiz:
 
